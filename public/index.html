@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="VideoSnap helps you save Facebook videos you own or have permission to download.">
+  <title>VideoSnap — Facebook Video Downloader</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="app">
+    <header class="nav">
+      <a class="brand" href="/" aria-label="VideoSnap home">
+        <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 10 6-10 6z"/></svg></span>
+        <span>VideoSnap</span>
+      </a>
+      <nav class="navlinks"><a href="#how">How it works</a><a href="#faq">FAQ</a><span class="pill">Simple. Fast. Easy.</span></nav>
+    </header>
+    <main>
+      <section class="hero">
+        <div class="eyebrow"><span class="dot"></span> Your handy video tool</div>
+        <h1>Your video,<br><span>one click away.</span></h1>
+        <p class="subtitle">Got a Facebook video link? Pop it in below, check the available quality, and save videos you have permission to download.</p>
+      </section>
+
+      <section class="panel" aria-label="Facebook video downloader">
+        <label class="input-label" for="videoUrl">Facebook video link</label>
+        <div class="inputrow">
+          <div class="urlbox"><span class="link-icon" aria-hidden="true">↗</span><input id="videoUrl" type="url" placeholder="Paste your Facebook video link here..." autocomplete="url" aria-describedby="urlHelp"></div>
+          <button id="getVideo" type="button">Get Video <span aria-hidden="true">↗</span></button>
+        </div>
+        <div class="helper" id="urlHelp">🔒 Only use videos you own or have permission to save.</div>
+        <div class="message" id="message" role="status" aria-live="polite"></div>
+
+        <section class="result" id="result" hidden aria-live="polite">
+          <div class="resulthead">
+            <div class="thumb" id="thumb"><span aria-hidden="true">▶</span></div>
+            <div class="resulttext"><strong id="videoTitle">Video preview</strong><p id="videoMeta">Checking available video details…</p></div>
+          </div>
+          <div class="resultcontrols">
+            <label class="quality" for="quality">Video quality
+              <select id="quality" aria-label="Video quality"><option value="best">Best available quality</option></select>
+            </label>
+            <button class="download" id="downloadBtn" type="button">Download Video ↓</button>
+          </div>
+        </section>
+      </section>
+
+      <p class="notice">Video availability depends on Facebook access and the video’s permissions. Private or login-only videos are not supported. Download only content you own or are authorized to save.</p>
+
+      <section class="steps" id="how">
+        <article class="step"><div class="stepicon">🔗</div><div><h3>1. Paste your link</h3><p>Copy a Facebook video URL and paste it into the box.</p></div></article>
+        <article class="step"><div class="stepicon">🎬</div><div><h3>2. Check your video</h3><p>See the video title, thumbnail, and supported quality options.</p></div></article>
+        <article class="step"><div class="stepicon">⬇</div><div><h3>3. Download with ease</h3><p>Choose a quality and save the video to your device.</p></div></article>
+      </section>
+
+      <section class="faq" id="faq">
+        <h2>Quick questions 💬</h2>
+        <details><summary>Will every Facebook link work?</summary><p>No. Private, restricted, removed, or unsupported videos may not be available. Facebook may also change how video links work.</p></details>
+        <details><summary>Can I use it on my phone?</summary><p>Yes. VideoSnap adapts to mobile screens, tablets, and desktop browsers.</p></details>
+        <details><summary>Is there a size limit?</summary><p>The server currently limits each downloaded file to 500 MB and applies basic request throttling.</p></details>
+      </section>
+    </main>
+    <footer class="footer"><strong>VideoSnap</strong> · Paste. Click. Easy.<br><span>Independent tool; not affiliated with or endorsed by Facebook/Meta.</span></footer>
+  </div>
+</body>
+</html>
