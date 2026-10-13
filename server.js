@@ -207,16 +207,35 @@ app.post("/api/download", async (req, res) => {
     res.setHeader("Content-Type", ext === ".mp4" ? "video/mp4" : ext === ".webm" ? "video/webm" : "application/octet-stream");
     res.setHeader("Content-Disposition", `attachment; filename="videosnap-video${ext}"`);
     res.setHeader("Content-Length", stat.size);
-    const stream = fs.createReadStream(filePath);
-    stream.on("error", () => {
-      if (!res.headersSent) res.status(500);
-      res.end();
-    });
-    res.on("close", () => {
-      stream.destroy();
-      fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-    });
-    stream.pipe(res);
+    
+let bytesSent = 0;
+const totalBytes = stat.size;
+const stream = fs.createReadStream(filePath);
+
+res.setHeader("Content-Length", totalBytes);
+res.setHeader("X-Content-Type-Options", "nosniff");
+
+stream.on("data", (chunk) => {
+  bytesSent += chunk.length;
+  const percent = Math.min(100, Math.round((bytesSent / totalBytes) * 100));
+  console.log(`[DOWNLOAD] ${percent}% (${bytesSent}/${totalBytes} bytes)`);
+});
+
+stream.on("error", (error) => {
+  console.error("[DOWNLOAD] Stream error:", error.message);
+  if (!res.headersSent) {
+    res.status(500);
+  }
+  res.end();
+});
+
+res.on("close", () => {
+  stream.destroy();
+  fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+});
+
+stream.pipe(res);
+
   } catch (error) {
     await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     const message = error.message || "Download failed.";
