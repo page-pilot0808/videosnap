@@ -150,11 +150,13 @@ app.post("/api/info", async (req, res) => {
   }
 
   try {
+    const startedAt = Date.now();
     const { stdout } = await runYtDlp([
       "--dump-single-json", "--no-warnings", "--no-playlist",
       "--skip-download", "--socket-timeout", "20",
       "--", url
     ], INFO_TIMEOUT_MS);
+    console.log(`[TIMING] /api/info yt-dlp: ${Date.now() - startedAt}ms`);
     const info = JSON.parse(stdout);
     if (info._type === "playlist" || Array.isArray(info.entries)) {
       return res.status(400).json({ error: "Please provide a single video link, not a playlist." });
