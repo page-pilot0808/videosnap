@@ -1,162 +1,195 @@
 
 "use strict";
 
-const input = document.getElementById("videoUrl");
-const message = document.getElementById("message");
-const result = document.getElementById("result");
-const getButton = document.getElementById("getVideo");
-const downloadButton = document.getElementById("downloadBtn");
-const qualitySelect = document.getElementById("quality");
+document.addEventListener("DOMContentLoaded", () => {
+  const input = document.getElementById("videoUrl");
+  const getVideoButton = document.getElementById("getVideo");
+  const message = document.getElementById("message");
+  const result = document.getElementById("result");
+  const qualitySelect = document.getElementById("quality");
+  const downloadButton = document.getElementById("downloadBtn");
+  const resultTitle = document.getElementById("videoTitle");
+  const resultText = document.getElementById("resultText");
+  const thumbnail = document.getElementById("thumb");
+  const videoMeta = document.getElementById("videoMeta");
 
-let currentVideoUrl = "";
-let busy = false;
-let activeObjectUrl = null;
+  if (
+    !input ||
+    !getVideoButton ||
+    !message ||
+    !result ||
+    !qualitySelect ||
+    !downloadButton
+  ) {
+    console.error("VideoSnap: One or more required HTML elements are missing.");
+    return;
+  }
 
-if (
-  !input ||
-  !message ||
-  !result ||
-  !getButton ||
-  !downloadButton ||
-  !qualitySelect
-) {
-  console.error(
-    "VideoSnap: Required HTML elements are missing. Check public/index.html IDs."
-  );
-} else {
-  initializeVideoSnap();
-}
+  let selectedPlatform = "YouTube";
+  let currentUrl = "";
+  let busy = false;
+  let progressWrap;
+  let progressFill;
+  let progressTitle;
+  let progressPercent;
+  let progressNote;
 
-function initializeVideoSnap() {
-  const style = document.createElement("style");
-
-  style.textContent = `
-    .progress-wrap {
-      display: none;
-      margin-top: 16px;
-      padding: 15px;
-      border: 1px solid #e3e8f3;
-      border-radius: 14px;
-      background: #fff;
-    }
-
-    .progress-wrap.show {
-      display: block;
-    }
-
-    .progress-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-      font-size: .88rem;
-      font-weight: 750;
-    }
-
-    .progress-track {
-      height: 10px;
-      overflow: hidden;
-      border-radius: 999px;
-      background: #e7ebf7;
-    }
-
-    .progress-fill {
-      height: 100%;
-      width: 0%;
-      border-radius: 999px;
-      background: linear-gradient(90deg, #3867f5, #7c3aed);
-      transition: width .15s ease;
-    }
-
-    .progress-fill.indeterminate {
-      width: 35%;
-      animation: videosnap-slide 1.1s ease-in-out infinite alternate;
-    }
-
-    @keyframes videosnap-slide {
-      from { transform: translateX(0); }
-      to { transform: translateX(185%); }
-    }
-
-    .progress-note {
-      margin: 9px 0 0;
-      color: #667085;
-      font-size: .8rem;
-      line-height: 1.5;
-      overflow-wrap: anywhere;
-    }
-
-    button:disabled {
-      opacity: .65;
-      cursor: wait;
-      transform: none;
-    }
+  // Add platform selector without requiring an index.html edit.
+  const picker = document.createElement("div");
+  picker.className = "videosnap-platform-picker";
+  picker.innerHTML = `
+    <style>
+      .videosnap-platform-picker {
+        max-width: 780px;
+        margin: 0 auto 18px;
+      }
+      .videosnap-platform-picker .platform-label {
+        display: block;
+        margin-bottom: 10px;
+        font-weight: 750;
+        font-size: .9rem;
+      }
+      .videosnap-platform-picker .platform-options {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .videosnap-platform-picker .platform-button {
+        min-height: 48px;
+        border: 1px solid var(--line, #e3e8f3);
+        border-radius: 12px;
+        padding: 10px 14px;
+        color: var(--text, #172033);
+        background: var(--surface, #fff);
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .videosnap-platform-picker .platform-button.active {
+        border: 2px solid var(--blue, #3867f5);
+        background: var(--soft, #edf2ff);
+      }
+      .videosnap-platform-picker .platform-button:disabled {
+        opacity: .6;
+        cursor: not-allowed;
+      }
+      .videosnap-progress {
+        display: none;
+        margin-top: 16px;
+        padding: 15px;
+        border: 1px solid var(--line, #e3e8f3);
+        border-radius: 14px;
+        background: var(--surface, #fff);
+      }
+      .videosnap-progress.show { display: block; }
+      .videosnap-progress-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        font-size: .88rem;
+        font-weight: 750;
+      }
+      .videosnap-progress-track {
+        height: 9px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #e7ebf7;
+      }
+      .videosnap-progress-fill {
+        height: 100%;
+        width: 0;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #3867f5, #7c3aed);
+        transition: width .15s ease;
+      }
+      .videosnap-progress-fill.indeterminate {
+        width: 35%;
+        animation: videosnap-progress-animation 1.1s ease-in-out infinite alternate;
+      }
+      .videosnap-progress-note {
+        margin: 9px 0 0;
+        color: var(--muted, #667085);
+        font-size: .8rem;
+        line-height: 1.5;
+      }
+      @keyframes videosnap-progress-animation {
+        from { transform: translateX(0); }
+        to { transform: translateX(185%); }
+      }
+      @media (max-width: 480px) {
+        .videosnap-platform-picker .platform-button { font-size: .85rem; }
+        .videosnap-progress-top { font-size: .82rem; }
+      }
+    </style>
+    <span class="platform-label">Choose your platform</span>
+    <div class="platform-options">
+      <button type="button" class="platform-button active"
+        data-platform="YouTube" aria-pressed="true">▶ YouTube</button>
+      <button type="button" class="platform-button"
+        data-platform="Facebook" aria-pressed="false">f Facebook</button>
+    </div>
   `;
 
-  document.head.appendChild(style);
+  const panel = input.closest(".panel");
+  if (panel) {
+    panel.parentNode.insertBefore(picker, panel);
+  }
 
-  const progressWrap = document.createElement("div");
-  progressWrap.className = "progress-wrap";
+  // Add progress UI.
+  progressWrap = document.createElement("div");
+  progressWrap.className = "videosnap-progress";
   progressWrap.setAttribute("role", "status");
   progressWrap.setAttribute("aria-live", "polite");
-
   progressWrap.innerHTML = `
-    <div class="progress-top">
-      <span id="progressLabel">Preparing video...</span>
-      <span id="progressPercent">Please wait</span>
+    <div class="videosnap-progress-top">
+      <span class="progress-title">Preparing your video…</span>
+      <span class="progress-percent">Working</span>
     </div>
-    <div class="progress-track">
-      <div class="progress-fill indeterminate" id="progressFill"></div>
+    <div class="videosnap-progress-track">
+      <div class="videosnap-progress-fill indeterminate"></div>
     </div>
-    <p class="progress-note" id="progressNote">
-      Please keep this page open.
+    <p class="videosnap-progress-note">
+      Please wait while VideoSnap processes your request.
     </p>
   `;
 
   message.insertAdjacentElement("afterend", progressWrap);
 
-  const progressLabel = progressWrap.querySelector("#progressLabel");
-  const progressPercent = progressWrap.querySelector("#progressPercent");
-  const progressFill = progressWrap.querySelector("#progressFill");
-  const progressNote = progressWrap.querySelector("#progressNote");
+  progressFill = progressWrap.querySelector(".videosnap-progress-fill");
+  progressTitle = progressWrap.querySelector(".progress-title");
+  progressPercent = progressWrap.querySelector(".progress-percent");
+  progressNote = progressWrap.querySelector(".videosnap-progress-note");
 
-  // Show messages and bold only the successful video-found message.
-  function showMessage(text, isError = false) {
+  function showMessage(text, type = "info") {
     message.textContent = text;
     message.classList.add("show");
-
-    message.style.fontWeight =
-      text.startsWith("Video found!") ? "700" : "400";
-
-    message.style.border = isError
-      ? "1px solid #dc6262"
-      : "1px solid transparent";
+    message.style.background =
+      type === "error" ? "#fff0f0" : "var(--soft, #edf2ff)";
+    message.style.color = type === "error" ? "#a51d2d" : "var(--text, #172033)";
   }
 
-  function clearMessage() {
-    message.textContent = "";
+  function hideMessage() {
     message.classList.remove("show");
-    message.style.border = "0";
-    message.style.fontWeight = "400";
+    message.textContent = "";
   }
 
-  function showProgress(label, percent = null, note = "") {
+  function showProgress(title, note = "Please wait…") {
     progressWrap.classList.add("show");
-    progressLabel.textContent = label;
+    progressTitle.textContent = title;
+    progressPercent.textContent = "Working";
     progressNote.textContent = note;
+    progressFill.classList.add("indeterminate");
+    progressFill.style.width = "35%";
+  }
 
-    if (percent === null) {
-      progressPercent.textContent = "Working...";
-      progressFill.classList.add("indeterminate");
-      progressFill.style.width = "35%";
-      return;
-    }
-
+  function setProgress(percent, note) {
     const safePercent = Math.max(0, Math.min(100, percent));
 
-    progressPercent.textContent = `${safePercent}%`;
     progressFill.classList.remove("indeterminate");
     progressFill.style.width = `${safePercent}%`;
+    progressPercent.textContent = `${Math.round(safePercent)}%`;
+
+    if (note) progressNote.textContent = note;
   }
 
   function hideProgress() {
@@ -165,279 +198,222 @@ function initializeVideoSnap() {
 
   function setBusy(value) {
     busy = value;
-    getButton.disabled = value;
+    getVideoButton.disabled = value;
     downloadButton.disabled = value;
-    getButton.textContent = value ? "Please wait..." : "Get Video ↗";
+
+    picker.querySelectorAll("[data-platform]").forEach((button) => {
+      button.disabled = value;
+    });
+
+    getVideoButton.style.opacity = value ? "0.65" : "";
+    downloadButton.style.opacity = value ? "0.65" : "";
   }
 
   function formatDuration(seconds) {
-    const value = Number(seconds);
+    if (!Number.isFinite(seconds) || seconds < 0) return "";
 
-    if (!Number.isFinite(value) || value <= 0) {
-      return "";
+    const total = Math.floor(seconds);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
     }
 
-    const minutes = Math.floor(value / 60);
-    const remainingSeconds = Math.floor(value % 60)
-      .toString()
-      .padStart(2, "0");
-
-    return `${minutes}:${remainingSeconds}`;
+    return `${minutes}:${String(secs).padStart(2, "0")}`;
   }
 
-  function isFacebookUrl(value) {
+  function validateSelectedPlatform(value) {
+    let parsed;
+
     try {
-      const url = new URL(value);
-      const host = url.hostname.toLowerCase().replace(/^www\./, "");
-
-      const validHost =
-        host === "facebook.com" ||
-        host.endsWith(".facebook.com") ||
-        host === "fb.watch";
-
-      return (
-        (url.protocol === "https:" || url.protocol === "http:") &&
-        validHost
-      );
+      parsed = new URL(value);
     } catch {
-      return false;
+      throw new Error("Please paste a complete video URL starting with https://.");
     }
+
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      throw new Error("Only HTTP and HTTPS video links are supported.");
+    }
+
+    const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+
+    const isYouTube =
+      host === "youtube.com" ||
+      host.endsWith(".youtube.com") ||
+      host === "youtu.be";
+
+    const isFacebook =
+      host === "facebook.com" ||
+      host.endsWith(".facebook.com") ||
+      host === "fb.watch";
+
+    if (selectedPlatform === "YouTube" && !isYouTube) {
+      throw new Error("Please paste a valid YouTube video link.");
+    }
+
+    if (selectedPlatform === "Facebook" && !isFacebook) {
+      throw new Error("Please paste a valid Facebook video link.");
+    }
+
+    return parsed.toString();
   }
 
-  async function readJson(response) {
-    return response.json().catch(() => ({}));
-  }
+  async function readJsonResponse(response) {
+    let data;
 
-  async function postJson(endpoint, payload) {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await readJson(response);
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error("The server returned an invalid response. Please try again.");
+    }
 
     if (!response.ok) {
-      throw new Error(
-        data.error ||
-        `Request failed (${response.status}). Please try again.`
-      );
+      throw new Error(data.error || `Request failed (${response.status}).`);
     }
 
     return data;
   }
 
   function resetResult() {
-    result.hidden = true;
     result.classList.remove("show");
-    currentVideoUrl = "";
+    currentUrl = "";
+
+    if (resultTitle) resultTitle.textContent = "Video information";
+    if (resultText) resultText.textContent = "";
+    if (videoMeta) videoMeta.textContent = "";
+
+    if (thumbnail) {
+      thumbnail.replaceChildren();
+    }
+
     qualitySelect.replaceChildren();
+    downloadButton.disabled = true;
   }
 
-  function setTextIfPresent(id, value) {
-    const element = document.getElementById(id);
+  function showVideoInfo(info, url) {
+    currentUrl = url;
 
-    if (element) {
-      element.textContent = value;
-    }
-  }
-
-  function displayThumbnail(url) {
-    const thumb = document.getElementById("thumb");
-
-    if (!thumb) {
-      return;
+    if (resultTitle) {
+      resultTitle.textContent = info.title || "Video ready";
     }
 
-    thumb.replaceChildren();
-
-    if (!url) {
-      thumb.textContent = "▶";
-      return;
+    if (resultText) {
+      resultText.textContent = info.uploader
+        ? `Uploaded by ${info.uploader}`
+        : `${selectedPlatform} video`;
     }
 
-    try {
-      const parsed = new URL(url);
+    if (videoMeta) {
+      const duration = formatDuration(info.duration);
+      videoMeta.textContent = duration ? `Duration: ${duration}` : "";
+    }
 
-      if (
-        parsed.protocol !== "https:" &&
-        parsed.protocol !== "http:"
-      ) {
-        thumb.textContent = "▶";
-        return;
+    if (thumbnail) {
+      thumbnail.replaceChildren();
+
+      if (info.thumbnail) {
+        const image = document.createElement("img");
+        image.src = info.thumbnail;
+        image.alt = "Video thumbnail";
+        image.loading = "lazy";
+        image.referrerPolicy = "no-referrer";
+        image.style.width = "100%";
+        image.style.height = "100%";
+        image.style.objectFit = "cover";
+        image.style.borderRadius = "12px";
+
+        image.addEventListener("error", () => {
+          image.remove();
+          thumbnail.textContent = "▶";
+        }, { once: true });
+
+        thumbnail.appendChild(image);
+      } else {
+        thumbnail.textContent = "▶";
       }
-
-      const img = document.createElement("img");
-      img.src = parsed.href;
-      img.alt = "Video thumbnail";
-      img.referrerPolicy = "no-referrer";
-      img.style.width = "100%";
-      img.style.height = "100%";
-      img.style.objectFit = "cover";
-
-      img.onerror = () => {
-        thumb.replaceChildren();
-        thumb.textContent = "▶";
-      };
-
-      thumb.appendChild(img);
-    } catch {
-      thumb.textContent = "▶";
     }
-  }
 
-  function displayQualityOptions(options) {
     qualitySelect.replaceChildren();
 
-    const validOptions = Array.isArray(options)
-      ? options.filter(option =>
-          option &&
-          typeof option.value === "string" &&
-          option.value.length > 0
-        )
-      : [];
+    const options = Array.isArray(info.qualityOptions)
+      ? info.qualityOptions
+      : [{ value: "best", label: "Best available quality" }];
 
-    if (validOptions.length === 0) {
+    for (const item of options) {
       const option = document.createElement("option");
-      option.value = "best";
-      option.textContent = "Best available quality";
+      option.value = String(item.value);
+      option.textContent = String(item.label);
       qualitySelect.appendChild(option);
-      return;
     }
 
-    validOptions.forEach(item => {
-      const option = document.createElement("option");
-      option.value = item.value;
-      option.textContent =
-        typeof item.label === "string"
-          ? item.label
-          : item.value;
+    if (resultText && !info.uploader) {
+      resultText.textContent = "Choose an available quality and download the video.";
+    }
 
-      qualitySelect.appendChild(option);
-    });
+    result.classList.add("show");
+    downloadButton.disabled = false;
   }
 
   async function getVideo() {
     if (busy) return;
 
-    clearMessage();
+    hideMessage();
     hideProgress();
     resetResult();
 
-    const url = input.value.trim();
+    let url;
 
-    if (!url) {
-      showMessage("Paste a Facebook video link first.", true);
-      input.focus();
-      return;
-    }
-
-    if (!isFacebookUrl(url)) {
-      showMessage(
-        "Please enter a valid Facebook video link from facebook.com or fb.watch.",
-        true
-      );
+    try {
+      url = validateSelectedPlatform(input.value.trim());
+    } catch (error) {
+      showMessage(error.message, "error");
       input.focus();
       return;
     }
 
     setBusy(true);
-
     showProgress(
-      "Checking video link...",
-      null,
-      "The server is checking the video. This may take a little while."
+      "Checking your video…",
+      "Contacting the VideoSnap server to retrieve video information."
     );
 
     try {
-      const data = await postJson("/api/info", { url });
-
-      currentVideoUrl = url;
-
-      setTextIfPresent(
-        "videoTitle",
-        data.title || "Facebook video"
-      );
-
-      const metadata = [];
-
-      if (data.uploader) {
-        metadata.push(data.uploader);
-      }
-
-      const duration = formatDuration(data.duration);
-
-      if (duration) {
-        metadata.push(duration);
-      }
-
-      const optionCount = Array.isArray(data.qualityOptions)
-        ? data.qualityOptions.length
-        : 0;
-
-      if (optionCount > 0) {
-        metadata.push(`${optionCount} quality option(s)`);
-      }
-
-      setTextIfPresent("videoMeta", metadata.join(" · "));
-
-      displayThumbnail(data.thumbnail || "");
-      displayQualityOptions(data.qualityOptions);
-
-      result.hidden = false;
-      result.classList.add("show");
-
-      hideProgress();
-
-      showMessage(
-        "Video found! Choose a quality and click Download Video."
-      );
-
-      result.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest"
+      const response = await fetch("/api/info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+        signal: AbortSignal.timeout(70000)
       });
+
+      const info = await readJsonResponse(response);
+
+      showVideoInfo(info, url);
+      progressTitle.textContent = "Video information loaded";
+      progressFill.classList.remove("indeterminate");
+      progressFill.style.width = "100%";
+      progressPercent.textContent = "Ready";
+      progressNote.textContent = "Choose your quality and click Download Video.";
+      showMessage("Video information loaded successfully.");
+      result.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (error) {
-      currentVideoUrl = "";
-      hideProgress();
-
-      showMessage(
-        error.message || "Could not check this video.",
-        true
-      );
-
       console.error("VideoSnap info error:", error);
+      showMessage(error.message || "Could not retrieve this video.", "error");
+      progressTitle.textContent = "Could not load video";
+      progressPercent.textContent = "Failed";
+      progressNote.textContent = "Check the link and try again.";
     } finally {
       setBusy(false);
     }
   }
 
-  function getDownloadFilename(response) {
-    const disposition = response.headers.get("Content-Disposition");
+  function getFilename(response) {
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^";]+)"?/i);
 
-    if (disposition) {
-      const utf8Match = disposition.match(
-        /filename\*=UTF-8''([^;]+)/i
-      );
-
-      if (utf8Match) {
-        try {
-          return decodeURIComponent(utf8Match[1].trim());
-        } catch {
-          // Use the regular filename fallback.
-        }
-      }
-
-      const regularMatch = disposition.match(
-        /filename="?([^";]+)"?/i
-      );
-
-      if (regularMatch) {
-        return regularMatch[1].trim();
-      }
+    if (match && match[1] && /^[a-zA-Z0-9._-]+$/.test(match[1])) {
+      return match[1];
     }
 
     return "videosnap-video.mp4";
@@ -446,186 +422,139 @@ function initializeVideoSnap() {
   async function downloadVideo() {
     if (busy) return;
 
-    if (!currentVideoUrl) {
-      showMessage("Check a video link first.", true);
+    if (!currentUrl) {
+      showMessage("Check a video link first.", "error");
       return;
     }
 
-    clearMessage();
+    hideMessage();
     setBusy(true);
 
     showProgress(
-      "Preparing your video...",
-      null,
-      "The server is preparing the file. Please wait."
+      "Preparing your download…",
+      "The server is processing the video. This step may take some time."
     );
-
-    let reader = null;
 
     try {
       const response = await fetch("/api/download", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "video/mp4, application/octet-stream, application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: currentVideoUrl,
-          quality: qualitySelect.value
-        })
+          url: currentUrl,
+          quality: qualitySelect.value || "best"
+        }),
+        signal: AbortSignal.timeout(260000)
       });
 
       if (!response.ok) {
-        const data = await readJson(response);
-
-        throw new Error(
-          data.error || `Download failed (${response.status}).`
-        );
+        const data = await readJsonResponse(response);
+        throw new Error(data.error || "Download failed.");
       }
 
       if (!response.body) {
-        throw new Error(
-          "Your browser cannot read the download stream. Try another browser."
-        );
+        throw new Error("Your browser does not support this download response.");
+      }
+
+      const total = Number(response.headers.get("Content-Length")) || 0;
+      const reader = response.body.getReader();
+      const chunks = [];
+      let received = 0;
+
+      progressTitle.textContent = "Receiving video file…";
+      progressNote.textContent = total
+        ? "The video is being transferred to your browser."
+        : "Receiving the video file. File size is not available.";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        chunks.push(value);
+        received += value.byteLength;
+
+        if (total > 0) {
+          const percent = (received / total) * 100;
+          setProgress(
+            percent,
+            `Received ${(received / (1024 * 1024)).toFixed(2)} MB of ${(total / (1024 * 1024)).toFixed(2)} MB.`
+          );
+        } else {
+          progressTitle.textContent = "Receiving video file…";
+          progressPercent.textContent =
+            `${(received / (1024 * 1024)).toFixed(1)} MB`;
+        }
       }
 
       const contentType =
-        response.headers.get("Content-Type") || "video/mp4";
-
-      if (contentType.includes("application/json")) {
-        const data = await readJson(response);
-
-        throw new Error(
-          data.error || "The server returned an unexpected response."
-        );
-      }
-
-      const totalBytes =
-        Number(response.headers.get("Content-Length")) || 0;
-
-      reader = response.body.getReader();
-
-      const chunks = [];
-      let receivedBytes = 0;
-
-      showProgress(
-        "Downloading video...",
-        totalBytes > 0 ? 0 : null,
-        totalBytes > 0
-          ? "Receiving the video file."
-          : "Receiving the video file. Total file size is not available."
-      );
-
-      while (true) {
-        const item = await reader.read();
-
-        if (item.done) {
-          break;
-        }
-
-        if (!item.value) {
-          continue;
-        }
-
-        chunks.push(item.value);
-        receivedBytes += item.value.byteLength;
-
-        const receivedMB = (
-          receivedBytes / (1024 * 1024)
-        ).toFixed(2);
-
-        if (totalBytes > 0) {
-          const percent = Math.min(
-            100,
-            Math.floor((receivedBytes / totalBytes) * 100)
-          );
-
-          const totalMB = (
-            totalBytes / (1024 * 1024)
-          ).toFixed(2);
-
-          showProgress(
-            "Downloading video...",
-            percent,
-            `${receivedMB} MB received of ${totalMB} MB`
-          );
-        } else {
-          showProgress(
-            "Downloading video...",
-            null,
-            `${receivedMB} MB received`
-          );
-        }
-      }
-
-      if (receivedBytes === 0) {
-        throw new Error("The server returned an empty file.");
-      }
+        response.headers.get("Content-Type") || "application/octet-stream";
 
       const blob = new Blob(chunks, { type: contentType });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
 
-      if (activeObjectUrl) {
-        URL.revokeObjectURL(activeObjectUrl);
-      }
+      link.href = objectUrl;
+      link.download = getFilename(response);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
 
-      activeObjectUrl = URL.createObjectURL(blob);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
 
-      const anchor = document.createElement("a");
-      anchor.href = activeObjectUrl;
-      anchor.download = getDownloadFilename(response);
-
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-
-      showProgress(
-        "Download ready!",
-        100,
-        `${(receivedBytes / (1024 * 1024)).toFixed(2)} MB received. Your browser should now save the file.`
-      );
-
-      showMessage(
-        "Your video is ready. Check your browser's downloads."
-      );
-
-      const urlToRevoke = activeObjectUrl;
-      activeObjectUrl = null;
-
-      window.setTimeout(() => {
-        URL.revokeObjectURL(urlToRevoke);
-      }, 60000);
+      setProgress(100, "Your browser has received the video file.");
+      progressTitle.textContent = "Download ready";
+      progressPercent.textContent = "100%";
+      showMessage("Your video file is ready. Check your browser's downloads.");
     } catch (error) {
-      if (reader) {
-        try {
-          await reader.cancel();
-        } catch {
-          // Ignore cancellation errors.
-        }
-      }
-
-      hideProgress();
-
-      showMessage(
-        error.message || "Download failed. Please try again.",
-        true
-      );
-
       console.error("VideoSnap download error:", error);
+      showMessage(error.message || "Download failed. Please try again.", "error");
+      progressTitle.textContent = "Download failed";
+      progressPercent.textContent = "Failed";
+      progressNote.textContent = "Check the link or try another available quality.";
     } finally {
       setBusy(false);
     }
   }
 
-  getButton.addEventListener("click", getVideo);
+  picker.querySelectorAll("[data-platform]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (busy) return;
 
-  input.addEventListener("keydown", event => {
+      selectedPlatform = button.dataset.platform;
+
+      picker.querySelectorAll("[data-platform]").forEach((item) => {
+        const active = item === button;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+
+      const label = document.querySelector('label[for="videoUrl"]');
+
+      if (label) {
+        label.textContent = `${selectedPlatform} video link`;
+      }
+
+      input.placeholder =
+        selectedPlatform === "YouTube"
+          ? "Paste your YouTube video link here..."
+          : "Paste your Facebook video link here...";
+
+      input.value = "";
+      hideMessage();
+      hideProgress();
+      resetResult();
+    });
+  });
+
+  getVideoButton.addEventListener("click", getVideo);
+  downloadButton.addEventListener("click", downloadVideo);
+
+  input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       getVideo();
     }
   });
 
-  downloadButton.addEventListener("click", downloadVideo);
-
-  downloadButton.disabled = false;
-}
+  resetResult();
+  input.placeholder = "Paste your YouTube video link here...";
+});
