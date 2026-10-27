@@ -9,12 +9,16 @@ const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
 const app = express();
+
 const PORT = Number(process.env.PORT || 3000);
 const MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024;
 const INFO_TIMEOUT_MS = 60_000;
 const DOWNLOAD_TIMEOUT_MS = 240_000;
+const RATE_WINDOW_MS = 15 * 60 * 1000;
+const MAX_REQUESTS_PER_WINDOW = 35;
 
 app.disable("x-powered-by");
+app.set("trust proxy", 1);
 
 app.use(
   helmet({
@@ -34,14 +38,15 @@ app.use(
 );
 
 app.use(express.json({ limit: "12kb" }));
+
 app.use(
   express.static(path.join(__dirname, "public"), {
     extensions: ["html"]
   })
 );
 
-// Basic per-IP rate limit.
-// For multiple server instances, use a shared store.
+// Basic in-memory rate limiter.
+// For multiple instances, use a shared store.
 const rateBuckets = new Map();
 
 function rateLimit(req, res, next) {
@@ -50,14 +55,16 @@ function rateLimit(req, res, next) {
 
   let bucket = rateBuckets.get(key);
 
-  if (!bucket || now - bucket.startedAt > 15 * 60 * 1000) {
+  if (!bucket || now - bucket.startedAt >= RATE_WINDOW_MS) {
     bucket = { startedAt: now, count: 0 };
   }
 
   bucket.count += 1;
   rateBuckets.set(key, bucket);
 
-  if (bucket.count > 35) {
+  if (bucket.count > MAX_REQUESTS_PER_WINDOW) {
+    res.setHeader("Retry-After", "900");
+
     return res.status(429).json({
       error: "Too many requests. Please wait a few minutes and try again."
     });
@@ -68,48 +75,84 @@ function rateLimit(req, res, next) {
 
 app.use("/api", rateLimit);
 
-function validateFacebookUrl(value) {
+// Avoid keeping expired IP buckets indefinitely.
+const rateCleanup = setInterval(() => {
+  const now = Date.now();
+
+  for (const [key, bucket] of rateBuckets) {
+    if (now - bucket.startedAt >= RATE_WINDOW_MS) {
+      rateBuckets.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+rateCleanup.unref();
+
+// Supported public video URL hosts.
+function validateVideoUrl(value) {
   if (typeof value !== "string" || value.length > 2048) {
-    throw new Error("Paste a valid Facebook video URL.");
+    throw new Error("Paste a valid YouTube or Facebook video URL.");
   }
 
   let parsed;
 
   try {
-    parsed = new URL(value);
+    parsed = new URL(value.trim());
   } catch {
     throw new Error("That link is not a valid URL.");
   }
 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("Only web links are supported.");
-  }
-
-  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
-
-  const allowed =
-    host === "facebook.com" ||
-    host.endsWith(".facebook.com") ||
-    host === "fb.watch";
-
-  if (!allowed) {
-    throw new Error("Please use a facebook.com or fb.watch video link.");
+    throw new Error("Only HTTP and HTTPS video links are supported.");
   }
 
   if (parsed.username || parsed.password) {
     throw new Error("Links containing credentials are not allowed.");
   }
 
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+
+  const isYouTube =
+    host === "youtube.com" ||
+    host.endsWith(".youtube.com") ||
+    host === "youtu.be" ||
+    host === "youtube-nocookie.com" ||
+    host.endsWith(".youtube-nocookie.com");
+
+  const isFacebook =
+    host === "facebook.com" ||
+    host.endsWith(".facebook.com") ||
+    host === "fb.watch";
+
+  if (!isYouTube && !isFacebook) {
+    throw new Error(
+      "Please use a supported YouTube or Facebook video link."
+    );
+  }
+
+  // Return a normalized URL without a fragment.
   parsed.hash = "";
-  return parsed.toString();
+
+  return {
+    url: parsed.toString(),
+    platform: isYouTube ? "YouTube" : "Facebook"
+  };
 }
 
+// Run yt-dlp with bounded output and timeout.
 function runYtDlp(args, timeoutMs, maxBuffer = 8 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
-    const child = spawn("yt-dlp", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
-    });
+    let child;
+
+    try {
+      child = spawn("yt-dlp", args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true
+      });
+    } catch {
+      reject(new Error("Could not start the video engine."));
+      return;
+    }
 
     let stdout = "";
     let stderr = "";
@@ -117,32 +160,42 @@ function runYtDlp(args, timeoutMs, maxBuffer = 8 * 1024 * 1024) {
 
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      finish(new Error("The video service took too long. Try again later."));
+
+      finish(
+        new Error("The video service took too long. Please try again.")
+      );
     }, timeoutMs);
 
-    function finish(err, output) {
+    function finish(error, output) {
       if (settled) return;
 
       settled = true;
       clearTimeout(timer);
 
-      if (err) {
-        reject(err);
+      if (error) {
+        reject(error);
       } else {
         resolve({ stdout: output, stderr });
       }
     }
 
     child.stdout.on("data", (chunk) => {
+      if (settled) return;
+
       stdout += chunk.toString();
 
       if (stdout.length > maxBuffer) {
         child.kill("SIGKILL");
-        finish(new Error("The video information was too large to process."));
+
+        finish(
+          new Error("The video information was too large to process.")
+        );
       }
     });
 
     child.stderr.on("data", (chunk) => {
+      if (settled) return;
+
       stderr += chunk.toString();
 
       if (stderr.length > 64 * 1024) {
@@ -150,7 +203,9 @@ function runYtDlp(args, timeoutMs, maxBuffer = 8 * 1024 * 1024) {
       }
     });
 
-    child.on("error", () => {
+    child.on("error", (error) => {
+      console.error("[YTDLP] Process error:", error.message);
+
       finish(
         new Error(
           "The video engine is unavailable. Ensure yt-dlp is installed."
@@ -167,17 +222,28 @@ function runYtDlp(args, timeoutMs, maxBuffer = 8 * 1024 * 1024) {
         let message =
           "Could not access this video. It may be private, unavailable, or unsupported.";
 
-        if (lower.includes("private") || lower.includes("login")) {
+        if (
+          lower.includes("private") ||
+          lower.includes("login required") ||
+          lower.includes("sign in to confirm")
+        ) {
           message =
-            "This video appears to be private or requires login. Private/login-only videos are not supported.";
+            "This video requires access or login. Private/login-only videos are not supported.";
         } else if (lower.includes("unsupported url")) {
-          message = "This Facebook link format is not currently supported.";
+          message =
+            "This video link format is not currently supported.";
         } else if (
           lower.includes("too many requests") ||
+          lower.includes("http error 429") ||
           lower.includes("429")
         ) {
           message =
-            "Facebook temporarily rate-limited this request. Please try again later.";
+            "The video platform temporarily rate-limited this request. Please try again later.";
+        } else if (
+          lower.includes("max-filesize") ||
+          lower.includes("file is larger than")
+        ) {
+          message = "This video exceeds the 500 MB download limit.";
         }
 
         finish(new Error(message));
@@ -188,64 +254,89 @@ function runYtDlp(args, timeoutMs, maxBuffer = 8 * 1024 * 1024) {
   });
 }
 
-function normalizeInfo(info) {
+function normalizeInfo(info, platform) {
   const formats = Array.isArray(info.formats) ? info.formats : [];
 
   const heights = [
     ...new Set(
       formats
         .filter(
-          (f) =>
-            f.vcodec &&
-            f.vcodec !== "none" &&
-            Number.isFinite(Number(f.height))
+          (format) =>
+            format.vcodec &&
+            format.vcodec !== "none" &&
+            Number.isFinite(Number(format.height))
         )
-        .map((f) => Number(f.height))
-        .filter((h) => h > 0 && h <= 2160)
+        .map((format) => Number(format.height))
+        .filter((height) => height > 0 && height <= 2160)
     )
   ].sort((a, b) => b - a);
 
   const qualityOptions = [
     { value: "best", label: "Best available quality" },
     ...[1080, 720, 480, 360]
-      .filter((h) => heights.some((actual) => actual >= h))
-      .map((h) => ({
-        value: String(h),
-        label: `${h}p${h >= 720 ? " · HD" : ""}`
+      .filter((height) => heights.some((actual) => actual >= height))
+      .map((height) => ({
+        value: String(height),
+        label: `${height}p${height >= 720 ? " · HD" : ""}`
       }))
   ];
 
+  const duration = Number(info.duration);
+
   return {
-    title: String(info.title || "Facebook video").slice(0, 240),
+    platform,
+    title: String(info.title || `${platform} video`).slice(0, 240),
+
     thumbnail:
       typeof info.thumbnail === "string" &&
       /^https:\/\//i.test(info.thumbnail)
         ? info.thumbnail
         : null,
-    duration: Number.isFinite(Number(info.duration))
-      ? Number(info.duration)
-      : null,
-    uploader: String(info.uploader || info.channel || "").slice(0, 120),
+
+    duration:
+      Number.isFinite(duration) && duration >= 0
+        ? duration
+        : null,
+
+    uploader: String(
+      info.uploader || info.channel || info.creator || ""
+    ).slice(0, 120),
+
     qualityOptions
   };
 }
 
+function getErrorMessage(error) {
+  return error instanceof Error
+    ? error.message
+    : "An unexpected error occurred.";
+}
+
+// Health check.
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "VideoSnap" });
+  res.json({
+    ok: true,
+    service: "VideoSnap",
+    supportedPlatforms: ["YouTube", "Facebook"]
+  });
 });
 
+// Retrieve video information.
 app.post("/api/info", async (req, res) => {
-  let url;
+  let validated;
 
   try {
-    url = validateFacebookUrl(req.body?.url);
+    validated = validateVideoUrl(req.body?.url);
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    return res.status(400).json({
+      error: getErrorMessage(error)
+    });
   }
 
-  try {
-    const startedAt = Date.now();
+  const { url, platform } = validated;
+  const startedAt = Date.now();
 
+  try {
     const { stdout } = await runYtDlp(
       [
         "--dump-single-json",
@@ -261,7 +352,7 @@ app.post("/api/info", async (req, res) => {
     );
 
     console.log(
-      `[TIMING] /api/info yt-dlp: ${Date.now() - startedAt}ms`
+      `[TIMING] /api/info ${platform}: ${Date.now() - startedAt}ms`
     );
 
     const info = JSON.parse(stdout);
@@ -272,23 +363,32 @@ app.post("/api/info", async (req, res) => {
       });
     }
 
-    res.json(normalizeInfo(info));
+    return res.json(normalizeInfo(info, platform));
   } catch (error) {
-    res.status(422).json({
-      error: error.message || "Could not read this video."
+    console.error(
+      `[INFO] ${platform} request failed:`,
+      getErrorMessage(error)
+    );
+
+    return res.status(422).json({
+      error: getErrorMessage(error)
     });
   }
 });
 
+// Download a supported video.
 app.post("/api/download", async (req, res) => {
-  let url;
+  let validated;
 
   try {
-    url = validateFacebookUrl(req.body?.url);
+    validated = validateVideoUrl(req.body?.url);
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    return res.status(400).json({
+      error: getErrorMessage(error)
+    });
   }
 
+  const { url, platform } = validated;
   const quality = String(req.body?.quality || "best");
 
   if (!["best", "1080", "720", "480", "360"].includes(quality)) {
@@ -301,22 +401,25 @@ app.post("/api/download", async (req, res) => {
   const tempDir = path.join(os.tmpdir(), `videosnap-${randomUUID()}`);
 
   let stream = null;
-  let cleanupStarted = false;
+  let cleanupPromise = null;
 
-  async function cleanup() {
-    if (cleanupStarted) return;
+  function cleanup() {
+    if (!cleanupPromise) {
+      cleanupPromise = fsp
+        .rm(tempDir, { recursive: true, force: true })
+        .catch((error) => {
+          console.error(
+            "[CLEANUP] Could not remove temporary directory:",
+            error.message
+          );
+        });
+    }
 
-    cleanupStarted = true;
-
-    await fsp
-      .rm(tempDir, { recursive: true, force: true })
-      .catch((error) => {
-        console.error("[CLEANUP] Could not remove temp directory:", error.message);
-      });
+    return cleanupPromise;
   }
 
   try {
-    console.log("[TIMING] /api/download started");
+    console.log(`[DOWNLOAD] Started: ${platform}, quality=${quality}`);
 
     await fsp.mkdir(tempDir, {
       recursive: true,
@@ -328,7 +431,6 @@ app.post("/api/download", async (req, res) => {
         ? "best[ext=mp4]/best"
         : `best[height<=${quality}][ext=mp4]/best[height<=${quality}]/best`;
 
-    // Prepare the video first.
     await runYtDlp(
       [
         "--no-warnings",
@@ -352,7 +454,7 @@ app.post("/api/download", async (req, res) => {
     );
 
     console.log(
-      `[TIMING] yt-dlp download completed: ${Date.now() - requestStartedAt}ms`
+      `[TIMING] yt-dlp completed: ${Date.now() - requestStartedAt}ms`
     );
 
     const entries = await fsp.readdir(tempDir);
@@ -370,55 +472,55 @@ app.post("/api/download", async (req, res) => {
     const filePath = path.join(tempDir, videoName);
     const stat = await fsp.stat(filePath);
 
-    if (!stat.isFile() || stat.size > MAX_DOWNLOAD_BYTES) {
+    if (!stat.isFile() || stat.size <= 0) {
+      throw new Error("The video file could not be prepared.");
+    }
+
+    if (stat.size > MAX_DOWNLOAD_BYTES) {
       throw new Error("This file is too large. The limit is 500 MB.");
     }
 
     const ext = path.extname(videoName).toLowerCase();
 
-    res.setHeader(
-      "Content-Type",
+    const contentType =
       ext === ".mp4"
         ? "video/mp4"
         : ext === ".webm"
           ? "video/webm"
-          : "application/octet-stream"
-    );
+          : "application/octet-stream";
 
+    res.setHeader("Content-Type", contentType);
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="videosnap-video${ext}"`
     );
-
     res.setHeader("Content-Length", String(stat.size));
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "no-store");
 
     console.log(
-      `[TIMING] file ready to send: ${Date.now() - requestStartedAt}ms, size: ${(stat.size / 1024 / 1024).toFixed(2)} MB`
+      `[TIMING] File ready: ${Date.now() - requestStartedAt}ms; ` +
+      `size=${(stat.size / 1024 / 1024).toFixed(2)} MB`
     );
 
-    // Measure how much file data is sent from this server.
     let bytesSent = 0;
     let lastLoggedPercent = -1;
-    const totalBytes = stat.size;
 
     stream = fs.createReadStream(filePath);
 
     stream.on("data", (chunk) => {
       bytesSent += chunk.length;
 
-      const percent =
-        totalBytes > 0
-          ? Math.min(100, Math.floor((bytesSent / totalBytes) * 100))
-          : 100;
+      const percent = Math.min(
+        100,
+        Math.floor((bytesSent / stat.size) * 100)
+      );
 
-      // Log only when the integer percentage changes.
       if (percent !== lastLoggedPercent) {
         lastLoggedPercent = percent;
 
         console.log(
-          `[DOWNLOAD] ${percent}% (${bytesSent}/${totalBytes} bytes)`
+          `[DOWNLOAD] ${percent}% (${bytesSent}/${stat.size} bytes)`
         );
       }
     });
@@ -427,19 +529,11 @@ app.post("/api/download", async (req, res) => {
       console.error("[DOWNLOAD] Stream error:", error.message);
 
       if (!res.headersSent) {
-        res.status(500);
-      }
-
-      if (!res.destroyed) {
-        res.end();
-      }
-
-      void cleanup();
-    });
-
-    res.on("close", () => {
-      if (stream && !stream.destroyed) {
-        stream.destroy();
+        res.status(500).json({
+          error: "An error occurred while sending the video."
+        });
+      } else if (!res.destroyed) {
+        res.destroy(error);
       }
 
       void cleanup();
@@ -447,27 +541,44 @@ app.post("/api/download", async (req, res) => {
 
     stream.on("end", () => {
       console.log(
-        `[DOWNLOAD] Stream completed in ${Date.now() - requestStartedAt}ms`
+        `[DOWNLOAD] Completed in ${Date.now() - requestStartedAt}ms`
       );
+    });
+
+    res.on("close", () => {
+      // Stop reading if the client disconnects early.
+      if (!res.writableEnded && stream && !stream.destroyed) {
+        stream.destroy();
+      }
+
+      void cleanup();
     });
 
     stream.pipe(res);
   } catch (error) {
     await cleanup();
 
-    const message = error.message || "Download failed.";
-    const status = message.includes("too large") ? 413 : 422;
+    console.error(
+      `[DOWNLOAD] ${platform} failed:`,
+      getErrorMessage(error)
+    );
 
-    if (!res.headersSent) {
-      res.status(status).json({ error: message });
+    if (!res.headersSent && !res.destroyed) {
+      const message = getErrorMessage(error);
+      const status = message.toLowerCase().includes("too large")
+        ? 413
+        : 422;
+
+      return res.status(status).json({ error: message });
     }
   }
 });
 
+// JSON response for unexpected errors.
 app.use((err, _req, res, _next) => {
-  console.error("Unhandled request error:", err.message);
+  console.error("[SERVER] Unhandled error:", err.message);
 
-  if (!res.headersSent) {
+  if (!res.headersSent && !res.destroyed) {
     res.status(500).json({
       error: "Unexpected server error. Please try again."
     });
