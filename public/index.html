@@ -1,81 +1,304 @@
+
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="VideoSnap helps you save Facebook videos you own or have permission to download.">
-  <title>VideoSnap — Facebook Video Downloader</title>
+
+  <title>VideoSnap — YouTube & Facebook Video Downloader</title>
+
+  <meta
+    name="description"
+    content="VideoSnap helps you download accessible YouTube and Facebook videos you own or have permission to save. Check available quality and save supported videos."
+  >
+
+  <meta name="robots" content="index,follow">
+  <meta name="theme-color" content="#3867f5">
+
+  <link rel="canonical" href="https://videosnap-0.onrender.com/">
   <link rel="stylesheet" href="/style.css">
+
   <script src="/app.js" defer></script>
 </head>
+
 <body>
   <div id="app">
+
+    <!-- Header -->
     <header class="nav">
       <a class="brand" href="/" aria-label="VideoSnap home">
-        <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 10 6-10 6z"/></svg></span>
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="m9 6 10 6-10 6z"></path>
+          </svg>
+        </span>
         <span>VideoSnap</span>
       </a>
-      <nav class="navlinks"><a href="#how">How it works</a><a href="#faq">FAQ</a><span class="pill">Simple. Fast. Easy.</span></nav>
+
+      <nav class="navlinks" aria-label="Main navigation">
+        <a href="#how">How it works</a>
+        <a href="#faq">FAQ</a>
+        <span class="pill">Simple. Fast. Easy.</span>
+      </nav>
     </header>
+
     <main>
+
+      <!-- Hero -->
       <section class="hero">
-        <div class="eyebrow"><span class="dot"></span> Your handy video tool</div>
-        <h1>Your video,<br><span>one click away.</span></h1>
-        <p class="subtitle">Got a Facebook video link? Pop it in below, check the available quality, and save videos you have permission to download.</p>
+        <div class="eyebrow">
+          <span class="dot" aria-hidden="true"></span>
+          Your handy video tool
+        </div>
+
+        <h1>
+          Your video,<br>
+          <span>one click away.</span>
+        </h1>
+
+        <p class="subtitle">
+          Have a YouTube or Facebook video link?
+          Paste it below, check the available quality, and download
+          supported videos you own or have permission to save.
+        </p>
       </section>
 
-      <section class="panel" aria-label="Facebook video downloader">
-        <label class="input-label" for="videoUrl">Facebook video link</label>
-        <div class="inputrow">
-          <div class="urlbox"><span class="link-icon" aria-hidden="true">↗</span><input id="videoUrl" type="url" placeholder="Paste your Facebook video link here..." autocomplete="url" aria-describedby="urlHelp"></div>
-          <button id="getVideo" type="button">Get Video <span aria-hidden="true">↗</span></button>
-        </div>
-        <div class="helper" id="urlHelp">🔒 Only use videos you own or have permission to save.</div>
-        <div class="message" id="message" role="status" aria-live="polite"></div>
+      <!-- Video downloader -->
+      <section
+        class="panel"
+        aria-label="YouTube and Facebook video downloader"
+      >
+        <label class="input-label" for="videoUrl">
+          Video link
+        </label>
 
-        <section class="result" id="result" hidden aria-live="polite">
-          <div class="resulthead">
-            <div class="thumb" id="thumb"><span aria-hidden="true">▶</span></div>
-            <div class="resulttext"><strong id="videoTitle">Video preview</strong><p id="videoMeta">Checking available video details…</p></div>
+        <div class="inputrow">
+          <div class="urlbox">
+            <span class="link-icon" aria-hidden="true">↗</span>
+
+            <input
+              id="videoUrl"
+              name="videoUrl"
+              type="url"
+              placeholder="Paste your YouTube video link here..."
+              autocomplete="url"
+              inputmode="url"
+              aria-describedby="urlHelp"
+              spellcheck="false"
+              required
+            >
           </div>
+
+          <button id="getVideo" type="button">
+            Get Video <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+
+        <div class="helper" id="urlHelp">
+          🔒 Only use videos you own or have permission to download.
+        </div>
+
+        <div
+          class="message"
+          id="message"
+          role="status"
+          aria-live="polite"
+        ></div>
+
+        <!-- Video result -->
+        <section
+          class="result"
+          id="result"
+          hidden
+          aria-live="polite"
+          aria-label="Video details and download options"
+        >
+          <div class="resulthead">
+            <div class="thumb" id="thumb">
+              <span aria-hidden="true">▶</span>
+            </div>
+
+            <div class="resulttext">
+              <strong id="videoTitle">Video preview</strong>
+              <p id="videoMeta">
+                Video details will appear here.
+              </p>
+            </div>
+          </div>
+
           <div class="resultcontrols">
-            <label class="quality" for="quality">Video quality
-              <select id="quality" aria-label="Video quality"><option value="best">Best available quality</option></select>
+            <label class="quality" for="quality">
+              Video quality
+
+              <select id="quality" aria-label="Select video quality">
+                <option value="best">Best available quality</option>
+              </select>
             </label>
-            <button class="download" id="downloadBtn" type="button">Download Video ↓</button>
+
+            <button
+              class="download"
+              id="downloadBtn"
+              type="button"
+              disabled
+            >
+              Download Video ↓
+            </button>
           </div>
         </section>
       </section>
 
-      <p class="notice">Video availability depends on Facebook access and the video’s permissions. Private or login-only videos are not supported. Download only content you own or are authorized to save.</p>
+      <p class="notice">
+        Video availability depends on platform access and video
+        permissions. Private, restricted, removed, or unsupported
+        videos may not work. Download only content you own or are
+        authorized to save, and follow the relevant platform terms.
+      </p>
 
-      <section class="steps" id="how">
-        <article class="step"><div class="stepicon">🔗</div><div><h3>1. Paste your link</h3><p>Copy a Facebook video URL and paste it into the box.</p></div></article>
-        <article class="step"><div class="stepicon">🎬</div><div><h3>2. Check your video</h3><p>See the video title, thumbnail, and supported quality options.</p></div></article>
-        <article class="step"><div class="stepicon">⬇</div><div><h3>3. Download with ease</h3><p>Choose a quality and save the video to your device.</p></div></article>
+      <!-- How it works -->
+      <section class="steps" id="how" aria-label="How VideoSnap works">
+
+        <article class="step">
+          <div class="stepicon" aria-hidden="true">🔗</div>
+
+          <div>
+            <h3>1. Paste your link</h3>
+            <p>
+              Choose YouTube or Facebook, then paste a supported
+              video URL into the input box.
+            </p>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="stepicon" aria-hidden="true">🎬</div>
+
+          <div>
+            <h3>2. Check your video</h3>
+            <p>
+              Retrieve available video details, including its title,
+              thumbnail, duration, and supported quality options.
+            </p>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="stepicon" aria-hidden="true">⬇</div>
+
+          <div>
+            <h3>3. Download your video</h3>
+            <p>
+              Select an available quality and download the supported
+              video to your device.
+            </p>
+          </div>
+        </article>
+
       </section>
 
+      <!-- FAQ -->
       <section class="faq" id="faq">
         <h2>Quick questions 💬</h2>
-        <details><summary>Will every Facebook link work?</summary><p>No. Private, restricted, removed, or unsupported videos may not be available. Facebook may also change how video links work.</p></details>
-        <details><summary>Can I use it on my phone?</summary><p>Yes. VideoSnap adapts to mobile screens, tablets, and desktop browsers.</p></details>
-        <details><summary>Is there a size limit?</summary><p>The server currently limits each downloaded file to 500 MB and applies basic request throttling.</p></details>
+
+        <details>
+          <summary>Which platforms are supported?</summary>
+          <p>
+            VideoSnap is designed for supported YouTube and Facebook
+            video links. Availability depends on the URL, platform
+            changes, and server compatibility.
+          </p>
+        </details>
+
+        <details>
+          <summary>Will every video link work?</summary>
+          <p>
+            No. Private, restricted, removed, age-restricted, or
+            otherwise inaccessible videos may not be available.
+            Login-only videos and content that requires bypassing
+            access controls are not supported.
+          </p>
+        </details>
+
+        <details>
+          <summary>Can I choose video quality?</summary>
+          <p>
+            Yes. When the server can retrieve the video's available
+            formats, supported quality options will appear in the
+            quality selector.
+          </p>
+        </details>
+
+        <details>
+          <summary>Can I use VideoSnap on my phone?</summary>
+          <p>
+            Yes. The page is designed to work with mobile phones,
+            tablets, and desktop browsers. Download behavior may vary
+            by browser and device.
+          </p>
+        </details>
+
+        <details>
+          <summary>Is there a download size limit?</summary>
+          <p>
+            The server is configured with a maximum download size of
+            500 MB. Actual availability also depends on hosting
+            resources and the requested video's format.
+          </p>
+        </details>
+
+        <details>
+          <summary>Why is my video not loading?</summary>
+          <p>
+            Check that the URL is correct and that the video is
+            accessible. Temporary server issues, platform changes,
+            unsupported formats, or hosting timeouts may also cause
+            a request to fail.
+          </p>
+        </details>
+
+        <details>
+          <summary>Is VideoSnap affiliated with YouTube or Facebook?</summary>
+          <p>
+            No. VideoSnap is an independent tool and is not affiliated
+            with, endorsed by, or officially connected to YouTube,
+            Google, Facebook, or Meta.
+          </p>
+        </details>
+
       </section>
     </main>
- 
-<footer class="footer">
-  <strong>VideoSnap</strong> · Paste. Click. Easy.
-  <br>
-  <span>Independent tool; not affiliated with or endorsed by Facebook/Meta.</span>
-  <br>
-  <nav aria-label="Footer navigation">
-    <a href="/about.html">About Us</a> |
-    <a href="/privacy.html">Privacy Policy</a> |
-    <a href="/terms.html">Terms of Service</a> |
-    <a href="/copyright.html">Copyright Policy</a> |
-    <a href="/contact.html">Contact Us</a>
-  </nav>
-</footer>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <strong>VideoSnap</strong> · Paste. Click. Easy.
+
+      <br>
+
+      <span>
+        An independent tool. Not affiliated with or endorsed by
+        YouTube, Google, Facebook, or Meta.
+      </span>
+
+      <br>
+
+      <nav aria-label="Footer navigation">
+        <a href="/about.html">About Us</a>
+        |
+        <a href="/privacy.html">Privacy Policy</a>
+        |
+        <a href="/terms.html">Terms of Service</a>
+        |
+        <a href="/copyright.html">Copyright Policy</a>
+        |
+        <a href="/contact.html">Contact Us</a>
+      </nav>
+
+      <p>
+        <small>
+          Use VideoSnap responsibly and only download content you
+          own or have permission to save.
+        </small>
+      </p>
+    </footer>
 
   </div>
 </body>
