@@ -1,8 +1,9 @@
+
 {
-  "name": "videosnap-facebook-downloader",
-  "version": "1.0.0",
+  "name": "videosnap-video-downloader",
+  "version": "1.1.0",
   "private": true,
-  "description": "VideoSnap frontend and backend for downloading accessible Facebook videos you are authorized to save.",
+  "description": "VideoSnap is a Node.js video downloader backend for accessible YouTube and Facebook videos users are authorized to save.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
