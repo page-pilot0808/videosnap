@@ -12,7 +12,6 @@ let currentVideoUrl = "";
 let busy = false;
 let activeObjectUrl = null;
 
-// Check required HTML elements
 if (
   !input ||
   !message ||
@@ -29,7 +28,6 @@ if (
 }
 
 function initializeVideoSnap() {
-  // Progress bar styles
   const style = document.createElement("style");
 
   style.textContent = `
@@ -97,7 +95,6 @@ function initializeVideoSnap() {
 
   document.head.appendChild(style);
 
-  // Create progress UI
   const progressWrap = document.createElement("div");
   progressWrap.className = "progress-wrap";
   progressWrap.setAttribute("role", "status");
@@ -123,9 +120,14 @@ function initializeVideoSnap() {
   const progressFill = progressWrap.querySelector("#progressFill");
   const progressNote = progressWrap.querySelector("#progressNote");
 
+  // Show messages and bold only the successful video-found message.
   function showMessage(text, isError = false) {
     message.textContent = text;
     message.classList.add("show");
+
+    message.style.fontWeight =
+      text.startsWith("Video found!") ? "700" : "400";
+
     message.style.border = isError
       ? "1px solid #dc6262"
       : "1px solid transparent";
@@ -135,6 +137,7 @@ function initializeVideoSnap() {
     message.textContent = "";
     message.classList.remove("show");
     message.style.border = "0";
+    message.style.fontWeight = "400";
   }
 
   function showProgress(label, percent = null, note = "") {
@@ -613,7 +616,6 @@ function initializeVideoSnap() {
     }
   }
 
-  // Button and keyboard events
   getButton.addEventListener("click", getVideo);
 
   input.addEventListener("keydown", event => {
@@ -625,6 +627,5 @@ function initializeVideoSnap() {
 
   downloadButton.addEventListener("click", downloadVideo);
 
-  // Initial button state
   downloadButton.disabled = false;
 }
